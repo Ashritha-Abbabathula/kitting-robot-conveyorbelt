@@ -1,0 +1,29 @@
+modes:
+  mode_1:
+    - red_block
+    - blue_block
+
+  mode_2:
+    - red_block
+    - rubiks_cube
+
+yolo:
+  weights: models/kitting_best.pt
+
+# Disable hosted Roboflow inference for now.
+# Use the locally trained model only.
+roboflow:
+  model_id: ""
+
+item_classes:
+  red_block:
+    class_name: red_block
+    confidence: 0.5
+
+  blue_block:
+    class_name: blue_block
+    confidence: 0.5
+
+  rubiks_cube:
+    class_name: rubiks_cube
+    confidence: 0.5

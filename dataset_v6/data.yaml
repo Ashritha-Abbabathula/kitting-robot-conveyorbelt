@@ -1,0 +1,6 @@
+path: /home/sreehitha/catkin_ws/src/kitting_robot/dataset_v6
+train: train/images
+val: valid/images
+test: test/images
+nc: 3
+names: {0: blue_block, 1: red_block, 2: rubiks_cube}

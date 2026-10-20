@@ -1,0 +1,26 @@
+<launch>
+  <!-- Simulated arm (default): roslaunch kitting_robot kitting.launch
+       Real arm: park the arm BY HAND above the pickup spot, then
+                 roslaunch kitting_robot kitting.launch simulate:=false port:=/dev/ttyUSB0 -->
+
+  <arg name="camera_index" default="0" />
+  <arg name="simulate" default="true" />
+  <arg name="port" default="/dev/ttyUSB0" />
+  <arg name="rate_hz" default="5.0" />
+  <arg name="start_delay" default="10.0" />  <!-- s from "all items seen" to the first pick -->
+  <arg name="wait" default="5.0" />          <!-- s between items -->
+
+  <node name="perception_node" pkg="kitting_robot" type="perception_node.py" output="screen">
+    <param name="camera_index" value="$(arg camera_index)" />
+    <param name="rate_hz" value="$(arg rate_hz)" />
+  </node>
+
+  <node name="notify_node" pkg="kitting_robot" type="notify_node.py" output="screen" />
+
+  <node name="dobot_node" pkg="kitting_robot" type="dobot_node.py" output="screen">
+    <param name="simulate" value="$(arg simulate)" />
+    <param name="port" value="$(arg port)" />
+    <param name="start_delay" value="$(arg start_delay)" />
+    <param name="wait" value="$(arg wait)" />
+  </node>
+</launch>

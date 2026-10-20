@@ -1,0 +1,44 @@
+# Arm coordinates and pick-and-place sequences per mode.
+# THESE ARE PLACEHOLDERS. Tomorrow, jog the real arm to each real position
+# and replace these numbers — don't trust these values, they're just here
+# so the pipeline runs end-to-end tonight in simulation.
+#
+# Units follow whatever pydobot/the Dobot API returns for your arm (mm for
+# x/y/z, degrees for r) — jogging and reading back the position tomorrow
+# will show you the actual numbers to use.
+
+# SAFETY: dobot_node refuses simulate:=false until this is true. Flip it only
+# after every x/y/z below has been measured on the real arm.
+calibrated: true
+
+# The arm's hardware home, read after homing (x=265.6, y=-3.6, z=-4.3). `home`
+# below is only used when the node needs a travel point; keep it above the table.
+home: {x: 174.4, y: 237.5, z: 52.5, r: 0}   # above the measured pickup spot (block top z=12.5 + 40 mm hover)
+
+bins:
+  red_block:   {x: 150, y: 150, z: 0, r: 0}
+  blue_block:  {x: 150, y: -150, z: 0, r: 0}
+  rubiks_cube: {x: 200, y: 150, z: 0, r: 0}
+
+pickup:
+  # Re-measured 2026-10-13 by hand-guiding the arm (tools/record_poses.py).
+  # One shared pickup spot; z = cup just touching the top of the item.
+  default:     {x: 174.4, y: 237.5, z: 12.5, r: 0}
+  red_block:   {x: 174.4, y: 237.5, z: 12.5, r: 0}   # block top, measured
+  blue_block:  {x: 174.4, y: 237.5, z: 12.5, r: 0}   # block top, measured
+  rubiks_cube: {x: 176.9, y: 234.7, z: 40.7, r: 0}   # cube top, measured 44.7; lowered 4 mm so suction seals (cube ~57 mm tall)
+
+# Where each item goes, per mode, in the order they are placed.
+# Re-measured 2026-10-13; place z = measured release height + 3 mm clearance.
+place:
+  mode_1:                       # red to the left, blue to the right
+    - {item: red_block,  x: -45.5, y: 283.6, z: -8.8, r: 0}    # left, measured z=-11.8
+    - {item: blue_block, x: 257.1, y: -94.8, z: -42.6, r: 0}   # right, measured z=-45.6
+  mode_2:                       # red block stacked on the Rubik's cube
+    - {item: rubiks_cube, x: 293.6, y: 6.9, z: -13.1, r: 0}    # measured z=-16.1
+    - {item: red_block,   x: 293.6, y: 6.9, z: 9.8, r: 0}      # on the cube, measured z=6.8
+
+# Sequence for one item: move above pickup, descend, suck on, lift, move
+# above bin, descend, suck off, lift, return home. This is used as a
+# *template* — the real node fills in the actual x/y/z per item at runtime.
+hover_height_offset: 40

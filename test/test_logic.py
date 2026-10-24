@@ -195,6 +195,123 @@ def test_ordered_items_follows_place_order_and_skips_home():
     assert max_radius(steps) > 0
 
 
+def _det(name, cx, w=50, cy=100):
+    return {"name": name, "conf": 0.9, "cx": cx, "cy": cy, "w": w, "h": w}
+
+
+def test_batch_slots_with_detected_reject():
+    from kitting_logic.batch_logic import plan_slots
+    # belt moves right: leading block is the rightmost
+    dets = [_det("blue_block", 100), _det("rubiks_cube", 200), _det("red_block", 300)]
+    assert plan_slots(dets, ["red_block", "blue_block"], "right") == ["red_block", None, "blue_block"]
+    assert plan_slots(dets, ["red_block", "blue_block"], "left") == ["blue_block", None, "red_block"]
+
+
+def test_batch_slots_follow_a_rotated_view():
+    from kitting_logic.batch_logic import plan_slots
+    # camera turned so the belt runs down the image: leading block is the lowest one
+    dets = [_det("blue_block", 300, cy=100), _det("reject", 300, cy=200), _det("red_block", 300, cy=300)]
+    assert plan_slots(dets, ["red_block", "blue_block"], "down") == ["red_block", None, "blue_block"]
+    assert plan_slots(dets, ["red_block", "blue_block"], "up") == ["blue_block", None, "red_block"]
+    # tilted belt, still ordered along its own line
+    dets = [_det("red_block", 120, cy=200), _det("reject", 260, cy=160), _det("blue_block", 400, cy=120)]
+    assert plan_slots(dets, ["red_block", "blue_block"], "right") == ["blue_block", None, "red_block"]
+
+
+def test_reject_found_wherever_the_camera_is():
+    import numpy as np, cv2
+    from kitting_logic.blob_logic import find_unknown_blocks
+    img = np.zeros((480, 640, 3), np.uint8)
+    img[:] = (200, 230, 210)                                    # pale table
+    cv2.rectangle(img, (0, 250), (640, 400), (30, 30, 30), -1)  # dark belt
+    cv2.rectangle(img, (100, 200), (160, 260), (0, 0, 220), -1)   # red
+    cv2.rectangle(img, (300, 200), (360, 260), (220, 80, 0), -1)  # blue
+    cv2.rectangle(img, (200, 200), (260, 260), (0, 230, 255), -1) # yellow reject between them
+    cv2.rectangle(img, (230, 330), (400, 390), (0, 220, 0), -1)   # big green thing off the line: not a block
+    known = [_det("red_block", 130, 60, 230), _det("blue_block", 330, 60, 230)]
+    found = find_unknown_blocks(img, known)
+    assert len(found) == 1 and abs(found[0]["cx"] - 230) < 6 and found[0]["name"] == "reject"
+    # same scene rotated 90 degrees finds it too
+    rot = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+    kr = [{"name": d["name"], "conf": 1.0, "cx": 480 - d["cy"], "cy": d["cx"], "w": d["h"], "h": d["w"]} for d in known]
+    assert len(find_unknown_blocks(rot, kr)) == 1
+    # no reject on the belt -> nothing found
+    cv2.rectangle(img, (200, 200), (260, 260), (30, 30, 30), -1)
+    assert find_unknown_blocks(img, known) == []
+
+
+def test_stray_blocks_off_the_belt_are_ignored():
+    from kitting_logic.batch_logic import select_batch, plan_slots
+    dets = [_det("red_block", 420, cy=200, w=60), _det("blue_block", 560, cy=175, w=60),
+            _det("red_block", 311, cy=434, w=70)]            # spare red on the table, far from the belt blocks
+    batch = select_batch(dets, ["red_block", "blue_block"])
+    assert sorted((d["name"], d["cx"]) for d in batch) == [("blue_block", 560), ("red_block", 420)]
+    # a huge false "red block" (a hand) whose size inflates the group's scale must not win either
+    dets2 = [_det("red_block", 410, cy=100, w=65), _det("blue_block", 237, cy=148, w=71), _det("red_block", 158, cy=326, w=310)]
+    assert sorted(d["cx"] for d in select_batch(dets2, ["red_block", "blue_block"])) == [237, 410]
+    # a detected non-required block beside the batch stays in as the reject
+    dets.append(_det("rubiks_cube", 490, cy=190, w=60))
+    batch = select_batch(dets, ["red_block", "blue_block"])
+    assert plan_slots(batch, ["red_block", "blue_block"], "right") == ["blue_block", None, "red_block"]
+
+
+def test_mode2_cube_must_come_before_red():
+    from kitting_logic.batch_logic import plan_slots, OrderError, BatchError
+    order = ["rubiks_cube", "red_block"]
+    req = ["red_block", "rubiks_cube"]
+    ok = [_det("rubiks_cube", 500, w=80), _det("blue_block", 380, w=60), _det("red_block", 260, w=60)]   # belt runs right
+    assert plan_slots(ok, req, "right", order) == ["rubiks_cube", None, "red_block"]
+    bad = [_det("red_block", 500, w=60), _det("blue_block", 380, w=60), _det("rubiks_cube", 260, w=80)]
+    try:
+        plan_slots(bad, req, "right", order)
+        assert False, "should have raised"
+    except OrderError as e:
+        assert "not in order of height" in str(e) and isinstance(e, BatchError)
+    # without the rule (MODE_1) either order is fine
+    assert plan_slots(bad, req, "right") == ["red_block", None, "rubiks_cube"]
+
+
+def test_belt_distances_follow_each_blocks_width():
+    from kitting_logic.batch_logic import advance_distances, batch_steps
+    assert advance_distances() == [37.5, 49.0, 49.0]
+    # 57 mm cube leading, then a 25 mm reject, then a 25 mm red block
+    assert advance_distances([57, 25, 25]) == [25 + 28.5, 28.5 + 24 + 12.5, 12.5 + 24 + 12.5]
+    steps = batch_steps(["rubiks_cube", None, "red_block"], 10.0, {"rubiks_cube": 57})
+    assert [round(s["seconds"], 2) for s in steps if s["action"] == "belt"] == [5.35, 6.5, 4.9]
+
+
+def test_order_notification_goes_through_the_notifier():
+    from kitting_logic.notify_logic import FakeEmailNotifier, RateLimitedNotifier
+    fake = FakeEmailNotifier()
+    n = RateLimitedNotifier(fake, min_interval=10)
+    assert n.maybe_send("Mode 2: batch NOT run - not in order of height [12:00:00]", now=100.0)
+    assert fake.sent and "not in order of height" in fake.sent[0]
+
+
+def test_batch_email_message():
+    from kitting_logic.notify_logic import format_batch_message
+    m = format_batch_message("mode_2", ["rubiks_cube", None, "red_block"], "12:00:00")
+    assert m == "Mode 2: got all components - executing now. Picking rubiks cube then red block; 1 reject let through. [12:00:00]"
+
+
+def test_batch_rejects_bad_photo():
+    from kitting_logic.batch_logic import plan_slots, BatchError
+    for dets in ([_det("red_block", 100), _det("red_block", 200), _det("blue_block", 300)],   # two red
+                 [_det("red_block", 100)]):                                                     # blue missing
+        try:
+            plan_slots(dets, ["red_block", "blue_block"], "right")
+            assert False, "should have raised"
+        except BatchError:
+            pass
+
+
+def test_batch_steps_distances():
+    from kitting_logic.batch_logic import batch_steps
+    steps = batch_steps(["red_block", None, "blue_block"], belt_mm_per_s=10.0)
+    assert [s["action"] for s in steps] == ["belt", "pick", "belt", "skip", "belt", "pick"]
+    assert [round(s["seconds"], 2) for s in steps if s["action"] == "belt"] == [3.75, 4.9, 4.9]
+
+
 if __name__ == "__main__":
     # Minimal runner if pytest isn't installed.
     import traceback

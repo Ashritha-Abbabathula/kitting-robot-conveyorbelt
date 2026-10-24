@@ -27,3 +27,18 @@ item_classes:
   rubiks_cube:
     class_name: rubiks_cube
     confidence: 0.5
+
+# Batch-of-3 run (kitting_batch.py): 2 required items + 1 reject on the belt, one photo per batch.
+batch:
+  toward: right          # direction the belt carries blocks in the camera image: left | right | up | down. The ONE thing that
+                         # must be set again if the camera is moved to a view where the belt runs the other way (or --toward)
+  ordered:               # stacks: required items must appear in this order, leading block (nearest the pickup end) first
+    mode_2: [rubiks_cube, red_block]    # cube is the base -> must come before the red block, else notify 'not in order of height'
+  sizes_mm: {red_block: 25, blue_block: 25, rubiks_cube: 57}   # length of each item along the belt (cube size = assumption, MEASURE it)
+  min_conf: {rubiks_cube: 0.4}   # batch runner only: the cube scores 0.4-0.8 on the belt (white body, blue stickers)
+  reject_mm: 25          # assumed length of a reject along the belt
+  belt:
+    stepper: 0           # Dobot stepper port the belt is plugged into: 0 = Stepper 1, 1 = Stepper 2
+    speed: 5000          # pulses/s while running (negative reverses). Measured 2026-10-22: moves the belt on stepper 0
+    mm_per_s: 35.0       # measured 2026-10-22: 140 mm in 4 s at 5000 pulses/s (one run; check with a 2 s run)
+    flush_seconds: 4.0  # after every batch the belt rolls on this long (arm already back at pickup) to clear any blocks left

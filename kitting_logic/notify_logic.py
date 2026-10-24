@@ -32,6 +32,16 @@ def format_completion_message(mode: str) -> str:
     return f"Got all components for {label} — executing now."
 
 
+def format_batch_message(mode: str, slots, stamp: str = "") -> str:
+    """Email for a valid batch: which blocks the arm will pick (in belt order) and that the reject is let through."""
+    label = mode.replace("_", " ").strip().title()
+    picks = [x.replace("_", " ") for x in slots if x]
+    rejects = sum(1 for x in slots if not x)
+    tail = f" [{stamp}]" if stamp else ""
+    return (f"{label}: got all components - executing now. Picking {' then '.join(picks)}; "
+            f"{rejects} reject let through.{tail}")
+
+
 class EmailNotifier:
     """
     Sends a real email via SMTP. Works with Gmail out of the box (using

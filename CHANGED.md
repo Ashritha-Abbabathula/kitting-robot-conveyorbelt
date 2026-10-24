@@ -46,3 +46,12 @@
 - 2026-10-20 (final MODE_2 z, set by user): cube pick 37.7, cube release 20.0 (CUBE_LOWER=23.7), red-on-cube 27.0 (RED_ON_CUBE_LOWER=36.7). Supersedes the entry above. Not tried on the arm.
 - 2026-10-20 (latest MODE_2 z, set by user): cube pick 37.7, cube release 10.0 (CUBE_LOWER=33.7), red-on-cube 23.0 (RED_ON_CUBE_LOWER=40.7). Supersedes the entry above. Not tried on the arm.
 - 2026-10-20 (latest MODE_2 z, set by user): cube pick 37.7, cube release 0.0 (CUBE_LOWER=43.7), red-on-cube 17.0 (RED_ON_CUBE_LOWER=46.7). Supersedes the entry above. Not tried on the arm.
+
+# Changes — 2026-10-22 (batch-of-3 version, copied folder)
+- NEW `kitting_batch.py`: QR -> arm-fix (Enter) -> 30 s countdown -> photo -> batch decision -> belt + arm, repeating per batch. See PROGRESS.md.
+- NEW `kitting_logic/batch_logic.py` (select_batch, plan_slots, advance distances, batch_steps) and `kitting_logic/blob_logic.py`
+  (colour-blob reject finder, view-independent). 6 new tests in `test/test_logic.py` (22 total, up from 16).
+- `kitting_logic/dobot_logic.py`: `set_conveyor(on, speed, index)` now really drives the belt via SetEMotor (id 135) on the real arm.
+- `config/checklists.yaml`: new `batch:` section (toward, belt stepper/speed/mm_per_s/flush_seconds=7).
+- `kitting_moves.py`: MODE_1 swing red +45 / blue -60 deg (was +30/-30).
+- NEW `tools/belt_test.py` (run the belt N s to measure speed). Existing kitting_run.py / MODE_2 flow untouched.

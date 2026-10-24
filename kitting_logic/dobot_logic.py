@@ -35,7 +35,7 @@ class SimulatedDobot:
     def set_suction(self, on: bool):
         print(f"[SIM] Suction {'ON' if on else 'OFF'}")
 
-    def set_conveyor(self, on: bool, speed: float = 0.0):
+    def set_conveyor(self, on: bool, speed: float = 0.0, index: int = 0):
         print(f"[SIM] Conveyor {'ON at speed ' + str(speed) if on else 'OFF'}")
 
     def disconnect(self):
@@ -144,16 +144,17 @@ class RealDobot:
     def set_suction(self, on: bool):
         self._dobot.suck(on)
 
-    def set_conveyor(self, on: bool, speed: float = 0.0):
-        # pydobot's conveyor support varies by version/fork. If
-        # `conveyor_belt` isn't available in your installed version, drive
-        # the conveyor with the arm's SetEMotor command directly instead —
-        # check pydobot's source for the exact call your version exposes.
-        if hasattr(self._dobot, "conveyor_belt"):
-            self._dobot.conveyor_belt(speed if on else 0)
-        else:
-            print("[WARN] This pydobot version has no conveyor_belt() — "
-                  "check its source for the equivalent EMotor call.")
+    def set_conveyor(self, on: bool, speed: float = 0.0, index: int = 0):
+        """Run the belt on the arm's stepper port `index` (0 = Stepper 1, 1 = Stepper 2).
+        speed is in pulses/s (sign = direction). pydobot 1.3.x has no conveyor call, so send
+        SetEMotor (id 135: uint8 index, uint8 enable, int32 speed) directly, immediate (not queued)."""
+        import struct
+        from pydobot.message import Message
+        msg = Message()
+        msg.id = 135  # SET_E_MOTOR
+        msg.ctrl = 0x01  # write, immediate
+        msg.params = bytearray(struct.pack("<BBi", index, 1 if on else 0, int(speed) if on else 0))
+        self._dobot._send_command(msg, wait=False)
 
     def disconnect(self):
         if self._dobot is not None:
@@ -179,6 +180,9 @@ def run_pick_and_place(dobot, sequence: List[Dict]):
             dobot.move_to(step["x"], step["y"], step["z"], step.get("r", 0.0))
         elif action == "suck":
             dobot.set_suction(step["on"])
+        elif action == "wait":
+            import time
+            time.sleep(step["seconds"])
         elif action == "conveyor":
             dobot.set_conveyor(step["on"], step.get("speed", 0.0))
         elif action == "home":

@@ -145,3 +145,44 @@ Hardware home (after homing): 265.6, -3.6, -4.3.
 - 2026-10-20 (final MODE_2 z, set by user): cube pick 37.7, cube release 20.0 (CUBE_LOWER=23.7), red-on-cube 27.0 (RED_ON_CUBE_LOWER=36.7). Supersedes the entry above. Not tried on the arm.
 - 2026-10-20 (latest MODE_2 z, set by user): cube pick 37.7, cube release 10.0 (CUBE_LOWER=33.7), red-on-cube 23.0 (RED_ON_CUBE_LOWER=40.7). Supersedes the entry above. Not tried on the arm.
 - 2026-10-20 (latest MODE_2 z, set by user): cube pick 37.7, cube release 0.0 (CUBE_LOWER=43.7), red-on-cube 17.0 (RED_ON_CUBE_LOWER=46.7). Supersedes the entry above. Not tried on the arm.
+
+## Session log — 2026-10-22: BATCH-OF-3 VERSION (this folder is a copy of ~/catkin_ws/src/kitting_robot; the original is untouched)
+`.venv` here is a SYMLINK to the original's venv (disk was nearly full) - installing packages here changes the original's env.
+**Idea:** QR picks the mode, then ONE photo of the belt shows a batch of 3 blocks (2 required for the mode + 1 reject = anything not on
+the mode's checklist). The arm picks only the required ones; the reject is left and the belt carries it off. MODE_1 only so far
+(red -> left, blue -> right). MODE_2 is not built for batches.
+
+**Run it (real arm):** `./run_batch.sh` (= `.venv/bin/python -u -I kitting_batch.py --real`) -> "Please FIX THE ARM ... press Enter" (pickup x/y is read
+from the arm, held still, then FIXED for the whole run) -> QR scanner -> 30 s countdown with live camera to place blocks -> photo ->
+decision -> belt + arm -> 7 s belt roll-on -> next countdown. Keys: SPACE photo now, r new QR, q quit. There is NO MOVE prompt any more (removed 2026-10-22): once a batch is decided the arm starts straight away. `--yes` is an ignored old option. `--mode mode_1` skips the QR; `--park-seconds N` = timed arm-setting window instead of Enter (unattended); `--toward`
+sets the belt direction in the image; `--slots red_block,reject,blue_block` skips vision (tests belt+arm only); `--image f.jpg` = decision on a photo.
+Simulated by default (no `--real`). Every photo + verdict is saved in `captures/batch/runs/` (`_raw`, `_ok`, `_refused`).
+
+**How a batch is decided (kitting_logic/batch_logic.py, blob_logic.py):** YOLO (imgsz 640 - 320 missed small blocks) finds red/blue;
+`select_batch` keeps the tightest group (similar size, close together) and ignores strays on the table; `find_unknown_blocks` finds the
+reject as a saturated colour blob on the line of the found blocks (any colour incl. green/yellow; not black/white), size/shape-matched
+to them - NOT a fixed image region, so the camera can move. Order along the belt is taken along that line, pointed the way `toward`
+says the belt moves in the image. Not exactly 1 red + 1 blue + 1 other -> nothing moves.
+**`toward` (config batch.toward, now `right`) MUST be set to the belt's direction in the camera view** - nothing in the picture says which
+end is the pickup end. Camera view the belt runs left->right.
+
+**Belt (config/checklists.yaml `batch.belt`):** driven by the Dobot, stepper port 0 (= Stepper 1), speed 5000 pulses/s, measured 140 mm in 4 s
+= 35 mm/s (one measurement; short runs may be a bit off). `RealDobot.set_conveyor` now sends SetEMotor (protocol id 135) itself -
+pydobot 1.3.x has no conveyor call. `tools/belt_test.py` runs it for N s to measure.
+Geometry used: block 25 mm, gap 24 mm edge to edge, leading block's near edge 25 mm before the pickup point -> belt stops 37.5 mm, then
+49 mm apart. After the last block the arm returns to the pickup point and the belt ALWAYS rolls 7 s (`flush_seconds`) to clear blocks.
+
+**Arm moves:** same relative scheme as before (place spots = pickup x/y swung around the arm base, same reach). MODE_1 swing now
+red +45 deg (left), blue -60 deg (right) (`SWING_DEG` in kitting_moves.py). Heights come from coordinates.yaml (pickup z 12.5), NOT from
+the z the arm was held at when parked. A new pickup spot is taken on every run (by design).
+
+**Gotchas hit this session:** (1) a run reads whatever pose the arm is in at the fix step - if it was not parked on the belt pickup point
+the whole run is shifted (happened twice); watch the printed `Pickup spot FIXED` line. (2) The first version read the pose the instant a
+timed window ended, mid-hand-movement - now waits until the arm is still. (3) `pkill -f`/`pgrep -f` with the script name matches the
+calling shell - use `pgrep -f "[.]venv/bin/python -u -I kitting_batch"` in its own command. (4) Python buffers stdout when not on a
+terminal - use `-u`.
+**Tested:** 22/22 unit tests (`.venv/bin/python -I test/test_logic.py`); many real-arm batches ran correctly (red/blue picked to the
+left/right drops, reject skipped, belt cleared). **Not done / open:** MODE_2 batches; no email in the batch flow; belt mm/s only measured once;
+drop spots at 45/60 deg only checked by eye; detection weakest for blue at the frame edge and for dark/white rejects.
+
+- 2026-10-22 (late): MODE_2 batches work on the real arm (cube -> stack base, red on top; stack at -60 deg, cube pick z 33.7 = CUBE_PICK_LOWER 7, 1.5 s suction pause). QR scanner switches mode (show the other QR during a countdown). Emails: one per valid batch ('got all components - executing now') and one when MODE_2 is out of order ('not in order of height'); both sent in a background thread. USB tip: if the VM loses camera+Dobot, `dmesg` says 'ohci-pci ... HC died' -> `echo 0000:00:06.0 | sudo tee /sys/bus/pci/drivers/ohci-pci/unbind` then `.../bind`, then re-attach in VirtualBox. Cube width 57 mm is an assumption (config batch.sizes_mm).

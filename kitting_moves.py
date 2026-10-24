@@ -7,7 +7,7 @@ Call it once the arm is parked at the pickup position and the QR told you the mo
     move_item(arm, "mode_2", "rubiks_cube", pickup_xy=(x, y))   # one item
 
 `pickup_xy` is the x/y the arm REPORTS while parked at the pickup spot. Every place spot is
-the pickup spot swung +-30 deg around the arm base (left / right), same distance from the base.
+the pickup spot swung +-30 deg (MODE_1: red +60, blue -60 deg) around the arm base (left / right), same distance from the base.
 MODE_2 cube and red block use the SAME x/y; only z differs. Heights: table level from the saved pickup z
 (cube/blocks released CLEARANCE above the surface, red on cube = cube z + block height); hover from coordinates.yaml.
 (r is always 0.) Tune SWING_DEG at the top of the tables.
@@ -31,15 +31,17 @@ from kitting_logic.dobot_logic import RealDobot, SimulatedDobot, run_pick_and_pl
 # Where each item goes: swing around the arm BASE by this many degrees from the pickup spot (same
 # distance from the base, so reach never gets worse). +ve = left, -ve = right. MODE_2 base and top share one spot.
 SWING_DEG = {
-    "mode_1": {"red_block": +30.0, "blue_block": -30.0},
-    "mode_2": {"rubiks_cube": -30.0, "red_block": -30.0},
+    "mode_1": {"red_block": +60.0, "blue_block": -60.0},
+    "mode_2": {"rubiks_cube": -49.0, "red_block": -49.0},
 }
 MODES = SWING_DEG
 BLOCK_HEIGHT = 23.0   # mm, red/blue block (measured: red-on-cube release was 22.9 above cube release)
 CLEARANCE = 3.0       # mm, release this far above the surface
 CUBE_LOWER = 43.7     # mm, release the Rubik's cube this much lower than the other items
-CUBE_PICK_LOWER = 3.0         # mm, MODE_2: pick the Rubik's cube this much lower (pick step only; releases unchanged)
+CUBE_PICK_LOWER = 7.0         # mm, MODE_2: pick the Rubik's cube this much lower (pick step only; releases unchanged)
+CUBE_SUCTION_DWELL = 1.5      # s, MODE_2: keep the pump on this long with the cup on the cube BEFORE lifting, so vacuum builds up
 RED_ON_CUBE_LOWER = 46.7      # mm (to z 17.0), MODE_2: release the red block on the cube this much lower
+MODE_2_EXTRA_HOVER = 50.0     # mm, MODE_2: AFTER the pick, lift + swing this much higher to clear other components (approach, pick and release z unchanged)
 
 
 def place_xy(mode, item, pickup_xy):
@@ -76,17 +78,21 @@ def item_steps(mode, item, pickup_xy, coords=None):
     c = coords or _coords()
     px, py = pickup_xy
     hover = c.get("hover_height_offset", 40)
+    carry = hover + (MODE_2_EXTRA_HOVER if mode == "mode_2" else 0.0)     # travel height once the item is picked up
     pick_z = c["pickup"].get(item, c["pickup"]["default"])["z"]
     if mode == "mode_2" and item == "rubiks_cube":
         pick_z -= CUBE_PICK_LOWER      # the release heights below still use the saved pickup z
     pz = place_z(mode, item, c)
     tx, ty = place_xy(mode, item, pickup_xy)
+    grab = [{"action": "suck", "on": True}]
+    if item == "rubiks_cube":
+        grab.append({"action": "wait", "seconds": CUBE_SUCTION_DWELL})     # let the vacuum build before lifting the cube
     return [
         {"action": "move", "x": px, "y": py, "z": pick_z + hover},
         {"action": "move", "x": px, "y": py, "z": pick_z},
-        {"action": "suck", "on": True},
-        {"action": "move", "x": px, "y": py, "z": pick_z + hover},
-        {"action": "move", "x": tx, "y": ty, "z": pz + hover},
+        *grab,
+        {"action": "move", "x": px, "y": py, "z": pick_z + carry},
+        {"action": "move", "x": tx, "y": ty, "z": pz + carry},
         {"action": "move", "x": tx, "y": ty, "z": pz},
         {"action": "suck", "on": False},
         {"action": "move", "x": tx, "y": ty, "z": pz + hover},

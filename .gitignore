@@ -24,3 +24,7 @@ devel/
 logs/
 .pytest_cache/
 config/secrets.yaml
+
+# Symlinked venv and captured batch images
+.venv
+captures/batch/
